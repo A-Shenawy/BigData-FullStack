@@ -1,0 +1,6 @@
+fastapi==0.95.2
+uvicorn==0.22.0
+confluent-kafka==1.9.2
+pydantic==1.10.10
+pandas
+kafka-python

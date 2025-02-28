@@ -1,0 +1,108 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9092"]
+      interval: 5s
+      retries: 5
+      start_period: 5s
+
+  create-topic:
+    image: confluentinc/cp-kafka:latest
+    container_name: patient-data-topic
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+      sleep 10 &&
+      kafka-topics --create --topic patient-data-topic --bootstrap-server kafka:9092 --partitions 1 --replication-factor 1 &&
+      tail -f /dev/null
+      "
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "8080:8080"
+
+  publisher:
+    build:
+      context: ./publisher
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - "D:/Bigdata/dataset/mimic-iii-clinical-database/mimic-iii-clinical-database/unziped:/app/data" # Fixed volume path
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    healthcheck:
+      test: ["CMD", "nc", "-z", "kafka", "9092"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+  subscriber:
+    build:
+      context: ./subscriber  # Ensure this path is correct for your subscriber Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_URL: kafka:9092
+    command: python app.py  # Run the subscriber app
+  influxdb:
+    image: influxdb:latest
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123
+      - DOCKER_INFLUXDB_INIT_ORG=my-org
+      - DOCKER_INFLUXDB_INIT_BUCKET=icu_alerts
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=mynewadmintoken
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - influxdb
+
+volumes:
+  influxdb_data:
+  grafana_data:

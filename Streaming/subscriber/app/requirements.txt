@@ -1,0 +1,7 @@
+confluent-kafka
+
+pyspark
+
+influxdb-client
+
+pandas

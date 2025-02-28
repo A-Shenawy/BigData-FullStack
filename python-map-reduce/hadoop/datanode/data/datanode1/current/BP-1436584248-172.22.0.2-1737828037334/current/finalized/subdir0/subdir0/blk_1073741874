@@ -1,0 +1,34 @@
+from mrjob.job import MRJob
+from mrjob.step import MRStep
+from datetime import datetime
+
+
+class AverageAgeCalculator(MRJob):
+
+    def mapper(self, _, line):
+        try:
+            # Assuming CSV format: SUBJECT_ID, GENDER, DOB, DOD, AGE
+            fields = line.split(',')
+            if fields[0] == 'SUBJECT_ID':  # Skip header row
+                return
+
+            birth_year = int(fields[2].split('-')[0])  # Extract year from DOB
+            death_year = fields[3]
+
+            if death_year:
+                death_year = int(death_year.split('-')[0])
+                age = death_year - birth_year
+                yield "average_age", age
+
+        except ValueError:
+            # Catch any lines that can't be parsed or are incomplete
+            pass
+
+    def reducer(self, key, values):
+        values_list = list(values)
+        avg_age = sum(values_list) / len(values_list)
+        yield key, avg_age
+
+
+if __name__ == '__main__':
+    AverageAgeCalculator.run()
